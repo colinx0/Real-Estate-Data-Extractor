@@ -57,8 +57,7 @@ export const findTableIntersection = async (page, rowHeader, colHeader, searchLe
         }
         itemsByY.get(yKey).push({ item, x, yFromTop, text })
 
-        if (text === colHeaderLower || text.includes(colHeaderLower)) {
-          console.log("COLUMN HEADER FOUND:", text, "x =", x, "y =", yFromTop)
+        if (text === colHeaderLower) {
           if (colHeaderLower === 'active' && !activeColX) {
             activeColX = x
           } else if (colHeaderLower === 'total' && !totalColX) {

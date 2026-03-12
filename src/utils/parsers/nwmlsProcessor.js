@@ -11,38 +11,57 @@ import {
   extractNumber
 } from '../pdfCore.js'
 
-/**
- * Parse county from NWMLS format text
- * Example: "County is 'Chelan'"
- * Returns: "Chelan"
- */
 export const parseNWMLSCounty = (text) => {
   if (!text) return null
-
   const countyPattern = /County is\s+['"]([^'"]+)['"]/i
   const match = text.match(countyPattern)
   if (!match) return null
-
   return match[1].trim()
 }
 
-/**
- * Process NWMLS PDF and extract data
- */
+const getFullPageText = async (page) => {
+  const tc = await page.getTextContent()
+  return tc.items.map(item => item.str).join(' ')
+}
+
+const findPageByContent = async (pdf, marker) => {
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p)
+    const text = await getFullPageText(page)
+    if (text.includes(marker)) return page
+  }
+  return null
+}
+
+const extractDateFromPage = async (page) => {
+  let dateText = await extractTextAtCoordinates(page, 35.29, 95.04, 60, 5)
+  let dateInfo = parseNWMLSDate(dateText)
+  if (dateInfo) return dateInfo
+
+  dateText = await extractTextAtCoordinates(page, 30, 93, 70, 7)
+  dateInfo = parseNWMLSDate(dateText)
+  if (dateInfo) return dateInfo
+
+  const allText = await getFullPageText(page)
+  return parseNWMLSDate(allText)
+}
+
+const extractCountyFromText = (text) => {
+  return parseNWMLSCounty(text)
+}
+
+const extractTableData = async (page) => {
+  const listings = extractNumber(await findTableIntersection(page, 'count', 'active', 0, 0, 100, 100))
+  const sales = extractNumber(await findTableIntersection(page, 'count', 'total', 0, 0, 100, 100))
+  return { listings, sales }
+}
+
 export const processNWMLSPDF = async (file) => {
   try {
     ensureWorkerConfigured()
 
     const pdfjsLib = getPdfLib()
-    let getDocument = null
-    if (pdfjsLib.getDocument) {
-      getDocument = pdfjsLib.getDocument
-    } else if (pdfjsLib.default?.getDocument) {
-      getDocument = pdfjsLib.default.getDocument
-    } else if (typeof pdfjsLib.default === 'function') {
-      getDocument = pdfjsLib.default
-    }
-
+    const getDocument = pdfjsLib.getDocument ?? pdfjsLib.default?.getDocument
     if (!getDocument || typeof getDocument !== 'function') {
       throw new Error('PDF.js getDocument function not available')
     }
@@ -51,180 +70,55 @@ export const processNWMLSPDF = async (file) => {
     const pdf = await getDocument({ data: arrayBuffer }).promise
 
     const page1 = await pdf.getPage(1)
-    let dateText = await extractTextAtCoordinates(page1, 35.29, 95.04, 60, 5)
-    console.log(`[${file.name}] Extracted date text:`, dateText)
-
-    let dateInfo = parseNWMLSDate(dateText)
-
+    const dateInfo = await extractDateFromPage(page1)
     if (!dateInfo) {
-      console.error(`Could not parse date from PDF: ${file.name}`)
-      console.error(`Extracted text was: "${dateText}"`)
-
-      console.log('Attempting to extract date from larger area (bottom of page 1)...')
-      const largerDateText = await extractTextAtCoordinates(page1, 30, 93, 70, 7)
-      console.log(`Text from larger area:`, largerDateText)
-      const largerDateInfo = parseNWMLSDate(largerDateText)
-
-      if (largerDateInfo) {
-        console.log('Successfully parsed date from larger area')
-        dateInfo = largerDateInfo
-        dateText = largerDateText
-      } else {
-        console.log('Attempting to extract all text from bottom of page 1 to find date...')
-        const allTextContent = await page1.getTextContent()
-        const allText = allTextContent.items.map(item => item.str).join(' ')
-        console.log('Sample of all page text (last 500 chars):', allText.substring(Math.max(0, allText.length - 500)))
-        const allTextDateInfo = parseNWMLSDate(allText)
-
-        if (allTextDateInfo) {
-          console.log('Successfully parsed date from all page text')
-          dateInfo = allTextDateInfo
-        } else {
-          console.error('Could not find date in PDF. Please check the PDF format.')
-          console.error('The date should be in format: "Listings as of MM/DD/YYYY"')
-          return null
-        }
-      }
+      console.error(`[${file.name}] Could not find date`)
+      return null
     }
 
     const { month, year } = dateInfo
     const quarter = getQuarter(month)
-
-    const page3 = await pdf.getPage(3)
-    let countyText = await extractTextAtCoordinates(page3, 13.73, 91.41, 40, 5)
-    console.log(`[${file.name}] Extracted county text:`, countyText)
-
-    let county = parseNWMLSCounty(countyText)
-
-    if (!county) {
-      console.error(`Could not parse county from PDF: ${file.name}`)
-      console.error(`Extracted text was: "${countyText}"`)
-
-      console.log('Attempting to extract county from larger area (bottom of page 3)...')
-      const largerCountyText = await extractTextAtCoordinates(page3, 10, 89, 50, 10)
-      console.log(`Text from larger area:`, largerCountyText)
-      const largerCounty = parseNWMLSCounty(largerCountyText)
-
-      if (largerCounty) {
-        console.log('Successfully parsed county from larger area')
-        county = largerCounty
-        countyText = largerCountyText
-      } else {
-        console.log('Attempting to extract all text from page 3 to find county...')
-        const allTextContent = await page3.getTextContent()
-        const allText = allTextContent.items.map(item => item.str).join(' ')
-        console.log('Sample of all page text (first 500 chars):', allText.substring(0, 500))
-        const allTextCounty = parseNWMLSCounty(allText)
-
-        if (allTextCounty) {
-          console.log('Successfully parsed county from all page text')
-          county = allTextCounty
-        } else {
-          console.error('Could not find county in PDF. Please check the PDF format.')
-          console.error('The county should be in format: "County is \'CountyName\'"')
-          return null
-        }
-      }
-    }
-
     const mls = 'NWMLS'
 
-    let residentialListingsText = await findTableIntersection(page1, 'count', 'active', 0, 0, 100, 100)
-    if (!residentialListingsText) {
-      console.log('Trying full page search for residential listings...')
-      residentialListingsText = await findTableIntersection(page1, 'count', 'active', 0, 0, 100, 100)
-    }
-    const residentialListings = extractNumber(residentialListingsText)
-    console.log(`[${file.name}] Residential listings (count/active):`, residentialListingsText, '->', residentialListings)
+    const residentialPage = await findPageByContent(pdf, 'Residential Totals')
+    const condoPage = await findPageByContent(pdf, 'Condominium Totals')
+    const summaryPage = await findPageByContent(pdf, 'Summary of All Properties')
 
-    let residentialSalesText = await findTableIntersection(page1, 'count', 'total', 0, 0, 100, 100)
-    if (!residentialSalesText) {
-      console.log('Trying full page search for residential sales...')
-      residentialSalesText = await findTableIntersection(page1, 'count', 'total', 0, 0, 100, 100)
+    let county = null
+    for (let p = pdf.numPages; p >= 1 && !county; p--) {
+      const page = await pdf.getPage(p)
+      const text = await getFullPageText(page)
+      county = extractCountyFromText(text)
     }
-    const residentialSales = extractNumber(residentialSalesText)
-    console.log(`[${file.name}] Residential sales (count/total):`, residentialSalesText, '->', residentialSales)
 
-    const page2 = await pdf.getPage(2)
-    let condoListingsText = await findTableIntersection(page2, 'count', 'active', 0, 0, 100, 100)
-    if (!condoListingsText) {
-      console.log('Trying full page search for condo listings...')
-      condoListingsText = await findTableIntersection(page2, 'count', 'active', 0, 0, 100, 100)
+    if (!county) {
+      console.error(`[${file.name}] Could not find county`)
+      return null
     }
-    const condoListings = extractNumber(condoListingsText)
-    console.log(`[${file.name}] Condo listings (count/active):`, condoListingsText, '->', condoListings)
 
-    let condoSalesText = await findTableIntersection(page2, 'count', 'total', 0, 0, 100, 100)
-    if (!condoSalesText) {
-      console.log('Trying full page search for condo sales...')
-      condoSalesText = await findTableIntersection(page2, 'count', 'total', 0, 0, 100, 100)
-    }
-    const condoSales = extractNumber(condoSalesText)
-    console.log(`[${file.name}] Condo sales (count/total):`, condoSalesText, '->', condoSales)
-
-    let totalListingsText = await findTableIntersection(page3, 'count', 'active', 0, 0, 100, 100)
-    if (!totalListingsText) {
-      console.log('Trying full page search for total listings...')
-      totalListingsText = await findTableIntersection(page3, 'count', 'active', 0, 0, 100, 100)
-    }
-    const totalListings = extractNumber(totalListingsText)
-    console.log(`[${file.name}] Total listings (count/active):`, totalListingsText, '->', totalListings)
-
-    let totalSalesText = await findTableIntersection(page3, 'count', 'total', 0, 0, 100, 100)
-    if (!totalSalesText) {
-      console.log('Trying full page search for total sales...')
-      totalSalesText = await findTableIntersection(page3, 'count', 'total', 0, 0, 100, 100)
-    }
-    const totalSales = extractNumber(totalSalesText)
-    console.log(`[${file.name}] Total sales (count/total):`, totalSalesText, '->', totalSales)
+    const residential = residentialPage ? await extractTableData(residentialPage) : { listings: null, sales: null }
+    const condo = condoPage ? await extractTableData(condoPage) : { listings: null, sales: null }
+    const total = summaryPage ? await extractTableData(summaryPage) : { listings: null, sales: null }
 
     const rows = [
       {
-        Year: year,
-        Month: month,
-        Quarter: quarter,
-        'House Type': 'Residential',
-        County: county,
-        MLS: mls,
-        'Total Listings': residentialListings,
-        'Total Sales': residentialSales
+        Year: year, Month: month, Quarter: quarter,
+        'House Type': 'Residential', County: county, MLS: mls,
+        'Total Listings': residential.listings, 'Total Sales': residential.sales
       },
       {
-        Year: year,
-        Month: month,
-        Quarter: quarter,
-        'House Type': 'Condos',
-        County: county,
-        MLS: mls,
-        'Total Listings': condoListings,
-        'Total Sales': condoSales
+        Year: year, Month: month, Quarter: quarter,
+        'House Type': 'Condos', County: county, MLS: mls,
+        'Total Listings': condo.listings, 'Total Sales': condo.sales
       },
       {
-        Year: year,
-        Month: month,
-        Quarter: quarter,
-        'House Type': 'Total',
-        County: county,
-        MLS: mls,
-        'Total Listings': totalListings,
-        'Total Sales': totalSales
+        Year: year, Month: month, Quarter: quarter,
+        'House Type': 'Total', County: county, MLS: mls,
+        'Total Listings': total.listings, 'Total Sales': total.sales
       }
     ]
 
-    return {
-      fileName: file.name,
-      rows,
-      rawData: {
-        dateText,
-        countyText,
-        residentialListingsText,
-        residentialSalesText,
-        condoListingsText,
-        condoSalesText,
-        totalListingsText,
-        totalSalesText
-      }
-    }
+    return { fileName: file.name, rows }
   } catch (error) {
     console.error('Error processing NWMLS PDF:', file.name, error)
     return null

@@ -4,11 +4,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    include: ['pdfjs-dist']
+    include: ['pdfjs-dist', 'xlsx']
   },
   resolve: {
     alias: {
-      // Ensure pdfjs-dist resolves correctly
+      'xlsx': 'xlsx/dist/xlsx.full.min.js'
     }
   }
 })

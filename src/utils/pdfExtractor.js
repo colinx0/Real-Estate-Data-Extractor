@@ -1,11 +1,10 @@
 /**
  * PDF extractor - barrel file
- * Re-exports MLS-specific processors. For granular imports, use:
- *   - ./parsers/nwmlsProcessor
- *   - ./parsers/newamlsProcessor
- *   - ./dateParsing
- *   - ./pdfCore
+ * Re-exports MLS-specific processors.
  */
 
 export { processNWMLSPDF, parseNWMLSCounty } from './parsers/nwmlsProcessor.js'
 export { processNEWAMLSPDF } from './parsers/newamlsProcessor.js'
+export { processYARMLSPDF } from './parsers/yarmlsProcessor.js'
+export { processRMLSPDF } from './parsers/rmlsProcessor.js'
+export { processOlympicMLSXLSX } from './parsers/olympicMlsProcessor.js'

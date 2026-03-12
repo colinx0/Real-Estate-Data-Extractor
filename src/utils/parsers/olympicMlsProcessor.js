@@ -48,7 +48,7 @@ const getCellString = (ws, row, col) => {
 export const processOlympicMLSXLSX = async (file) => {
   try {
     const arrayBuffer = await file.arrayBuffer()
-    const wb = XLSX.read(new Uint8Array(arrayBuffer))
+    const wb = XLSX.read(arrayBuffer, { type: 'array' })
     const ws = wb.Sheets[wb.SheetNames[0]]
 
     const county = getCellString(ws, 3, 1)

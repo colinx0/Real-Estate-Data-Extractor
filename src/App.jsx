@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import './App.css'
-import { processNEWAMLSPDF, processNWMLSPDF } from './utils/pdfExtractor'
+import { processNEWAMLSPDF, processNWMLSPDF, processYARMLSPDF, processRMLSPDF, processOlympicMLSXLSX } from './utils/pdfExtractor'
 
-const MLS_TYPES = ['NEWAMLS', 'NWMLS', 'Olympic MLS', 'RMLS', 'YARMLs']
+const MLS_TYPES = ['NEWAMLS', 'NWMLS', 'Olympic MLS', 'RMLS', 'YARMLS']
 
 function App() {
   const [selectedFolders, setSelectedFolders] = useState([])
@@ -52,7 +52,8 @@ function App() {
     for (const [folderName, pdfFiles] of folderMap.entries()) {
       // Filter to only PDF files
       const pdfs = pdfFiles.filter(file => 
-        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') ||
+        file.name.toLowerCase().endsWith('.xlsx')
       )
       
       if (pdfs.length > 0) {
@@ -97,13 +98,20 @@ function App() {
               console.warn(`Failed to extract data from ${pdf.name}`)
             }
           }
-        } else if (classification === 'NWMLS') {
-          console.log(`\nProcessing ${pdfs.length} PDF(s) from ${folderName}...`)
+        } else if (classification === 'NWMLS' || classification === 'YARMLS' || classification === 'RMLS' || classification === 'Olympic MLS') {
+          console.log(`\nProcessing ${pdfs.length} file(s) from ${folderName} (${classification})...`)
+          
+          const processorMap = {
+            'NWMLS': processNWMLSPDF,
+            'YARMLS': processYARMLSPDF,
+            'RMLS': processRMLSPDF,
+            'Olympic MLS': processOlympicMLSXLSX
+          }
+          const processor = processorMap[classification]
           
           for (const pdf of pdfs) {
-            const extracted = await processNWMLSPDF(pdf)
+            const extracted = await processor(pdf)
             if (extracted && extracted.rows) {
-              // Add rows to the collection
               extracted.rows.forEach(row => {
                 allExtractedRows.push({
                   ...row,
@@ -111,8 +119,6 @@ function App() {
                   sourceFolder: folderName
                 })
               })
-              
-              // Log to console
               console.log(`\nExtracted data from ${extracted.fileName}:`)
               extracted.rows.forEach((row, index) => {
                 console.log(`Row ${index + 1}:`, row)

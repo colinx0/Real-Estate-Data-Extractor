@@ -16,6 +16,7 @@ const getFullPageText = async (page) => {
   return tc.items.map(item => item.str).join(' ')
 }
 
+/** Find the ***Totals*** row and extract numeric columns by fixed index (flexmls format). */
 const extractFlexmlsData = async (page) => {
   const viewport = page.getViewport({ scale: 1.0 })
   const ph = viewport.height
@@ -27,6 +28,7 @@ const extractFlexmlsData = async (page) => {
   const totalsItem = items.find(i => i.text.includes('***Totals***'))
   if (!totalsItem) return null
 
+  // Grab all items on the same horizontal line as the Totals label
   const rowItems = items
     .filter(i => Math.abs(i.y - totalsItem.y) < 5 && !i.text.includes('***'))
     .sort((a, b) => a.x - b.x)
@@ -46,6 +48,9 @@ const extractFlexmlsData = async (page) => {
   }
 }
 
+/**
+ * Process YARMLS PDF (flexmls format). Uses ***Totals*** row; column indices are fixed.
+ */
 export const processYARMLSPDF = async (file) => {
   try {
     ensureWorkerConfigured()
@@ -61,19 +66,13 @@ export const processYARMLSPDF = async (file) => {
 
     const allText = await getFullPageText(page)
     const dateInfo = parseDateFromText(allText)
-    if (!dateInfo) {
-      console.error(`[${file.name}] Could not find date`)
-      return null
-    }
+    if (!dateInfo) return null
 
     const { month, year } = dateInfo
     const quarter = getQuarter(month)
 
     const data = await extractFlexmlsData(page)
-    if (!data) {
-      console.error(`[${file.name}] Could not find Totals row`)
-      return null
-    }
+    if (!data) return null
 
     const county = 'Yakima'
     const mls = 'YARMLS'
@@ -98,8 +97,7 @@ export const processYARMLSPDF = async (file) => {
     ]
 
     return { fileName: file.name, rows }
-  } catch (error) {
-    console.error('Error processing YARMLS PDF:', file.name, error)
+  } catch {
     return null
   }
 }

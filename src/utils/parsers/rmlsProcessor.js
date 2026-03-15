@@ -41,6 +41,7 @@ const getFullPageText = async (page) => {
   return tc.items.map(i => i.str).join(' ')
 }
 
+/** Look for "X County Washington" in the top of the page (low Y values). */
 const parseCountyFromHeader = (items) => {
   for (const item of items.filter(i => i.y < 120).sort((a, b) => a.y - b.y)) {
     const match = item.text.match(/^(.+?)\s+County\s+Washington/i)
@@ -49,6 +50,7 @@ const parseCountyFromHeader = (items) => {
   return null
 }
 
+/** Look for "Month YYYY" in the header area. */
 const parseDateFromHeader = (items) => {
   for (const item of items.filter(i => i.y < 100)) {
     const m = item.text.match(/(\w+)\s+(\d{4})/)
@@ -59,7 +61,9 @@ const parseDateFromHeader = (items) => {
   return null
 }
 
+/** Find the "Total" row on a sales page and parse its 9 numeric columns. */
 const extractSalesFromTotalRow = (items) => {
+  // y > 400 skips header "Total" labels; we want the data Total row near the bottom
   const totalRows = items
     .filter(i => i.text === 'Total' && i.y > 400)
     .sort((a, b) => a.y - b.y)
@@ -80,7 +84,9 @@ const extractSalesFromTotalRow = (items) => {
   }
 }
 
+/** Find the "Total" row on an active/pending page and parse listings from columns 10 and 11. */
 const extractActiveFromTotalRow = (items) => {
+  // Same as sales: y > 400 to get the data row, not header
   const totalRows = items
     .filter(i => i.text === 'Total' && i.y > 400)
     .sort((a, b) => a.y - b.y)
@@ -101,6 +107,10 @@ const extractActiveFromTotalRow = (items) => {
   }
 }
 
+/**
+ * Process RMLS PDF. Multi-county; each county has sales + active/pending pages.
+ * Extracts Residential, Condos, Total per county.
+ */
 export const processRMLSPDF = async (file) => {
   try {
     ensureWorkerConfigured()
@@ -116,6 +126,7 @@ export const processRMLSPDF = async (file) => {
     const countyData = new Map()
     let dateInfo = null
 
+    // One pass over all pages: identify sales vs active pages per county, extract totals
     for (let p = 1; p <= pdf.numPages; p++) {
       const page = await pdf.getPage(p)
       const text = await getFullPageText(page)
@@ -125,7 +136,7 @@ export const processRMLSPDF = async (file) => {
 
       const isSalesPage = text.includes('Home Sales Report: Total Residential')
       const isActivePage = text.includes('Home Active/Pending Report')
-      if (!isSalesPage && !isActivePage) continue
+      if (!isSalesPage && !isActivePage) continue // skip non-data pages
 
       const county = parseCountyFromHeader(items)
       if (!county) continue
@@ -141,16 +152,14 @@ export const processRMLSPDF = async (file) => {
       }
     }
 
-    if (!dateInfo) {
-      console.error(`[${file.name}] Could not find date`)
-      return null
-    }
+    if (!dateInfo) return null
 
     const { month, year } = dateInfo
     const quarter = getQuarter(month)
     const mls = 'RMLS'
     const allRows = []
 
+    // Emit Residential, Condos, Total for each county we found
     for (const [county, data] of countyData.entries()) {
       const resListings = data.active?.residentialListings ?? null
       const condoListings = data.active?.condoListings ?? null
@@ -178,8 +187,7 @@ export const processRMLSPDF = async (file) => {
     }
 
     return { fileName: file.name, rows: allRows }
-  } catch (error) {
-    console.error('Error processing RMLS PDF:', file.name, error)
+  } catch {
     return null
   }
 }

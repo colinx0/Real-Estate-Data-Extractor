@@ -1,52 +1,41 @@
-/**
- * Main app: folder selection, MLS classification, and PDF/XLSX data extraction.
- * Users pick folders; each folder's name must start with one of the five MLS types.
- */
-
 import React, { useState } from 'react'
-import pLimit from 'p-limit'
 import './App.css'
-import { processNEWAMLSPDF, processNWMLSPDF, processYARMLSPDF, processRMLSPDF, processOlympicMLSXLSX } from './utils/pdfExtractor'
+import { processNEWAMLSPDF, processNWMLSPDF } from './utils/pdfExtractor'
 
-const MLS_TYPES = ['NEWAMLS', 'NWMLS', 'Olympic MLS', 'RMLS', 'YARMLS']
-const MAX_CONCURRENCY = 6
-const DEFAULT_CONCURRENCY = 3
-
-const processorMap = {
-  'NEWAMLS': processNEWAMLSPDF,
-  'NWMLS': processNWMLSPDF,
-  'YARMLS': processYARMLSPDF,
-  'RMLS': processRMLSPDF,
-  'Olympic MLS': processOlympicMLSXLSX
-}
+const MLS_TYPES = ['NEWAMLS', 'NWMLS', 'Olympic MLS', 'RMLS', 'YARMLs']
 
 function App() {
   const [selectedFolders, setSelectedFolders] = useState([])
   const [classifications, setClassifications] = useState([])
   const [extractedData, setExtractedData] = useState([])
   const [processing, setProcessing] = useState(false)
-  const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY)
 
-  /** Match folder name to an MLS type if it starts with that type (case-insensitive). Returns null if no match. */
   const classifyFolder = (folderName) => {
+    // Normalize folder name for comparison (case-insensitive, trim whitespace)
     const normalizedName = folderName.trim()
-    const matchedType = MLS_TYPES.find(type =>
-      normalizedName.toLowerCase().startsWith(type.toLowerCase())
+    
+    // Check for exact match (case-insensitive)
+    const matchedType = MLS_TYPES.find(type => 
+      type.toLowerCase() === normalizedName.toLowerCase()
     )
+    
     return matchedType || null
   }
 
   const handleFolderSelection = async (event) => {
     const files = Array.from(event.target.files)
+    
     if (files.length === 0) return
 
     setProcessing(true)
     setExtractedData([])
 
-    // Build a map: folder name -> list of files in that folder
+    // Group files by their folder path
     const folderMap = new Map()
+    
     files.forEach(file => {
-      // webkitRelativePath is like "FolderName/file.pdf"
+      // Extract folder name from webkitRelativePath
+      // Format: "folderName/file.pdf"
       const pathParts = file.webkitRelativePath.split('/')
       if (pathParts.length > 1) {
         const folderName = pathParts[0]
@@ -58,48 +47,108 @@ function App() {
     })
 
     const newClassifications = []
-    const tasks = []
-
+    const allExtractedRows = []
+    
     for (const [folderName, pdfFiles] of folderMap.entries()) {
-      const pdfs = pdfFiles.filter(file =>
-        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') ||
-        file.name.toLowerCase().endsWith('.xlsx')
+      // Filter to only PDF files
+      const pdfs = pdfFiles.filter(file => 
+        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
       )
+      
+      if (pdfs.length > 0) {
+        const classification = classifyFolder(folderName)
+        const result = {
+          folderName,
+          classification,
+          pdfCount: pdfs.length
+        }
+        
+        newClassifications.push(result)
+        
+        // Print to console as requested
+        if (classification) {
+          console.log(`Folder: ${folderName} -> Type: ${classification}`)
+        } else {
+          console.log(`Folder: ${folderName} -> Type: UNKNOWN (not one of the five types)`)
+        }
 
-      if (pdfs.length === 0) continue
-
-      const classification = classifyFolder(folderName)
-      newClassifications.push({ folderName, classification, pdfCount: pdfs.length })
-
-      if (!classification || !processorMap[classification]) continue
-
-      const processor = processorMap[classification]
-      for (const file of pdfs) {
-        tasks.push({ folderName, file, processor })
+        // Process PDFs based on classification
+        if (classification === 'NEWAMLS') {
+          console.log(`\nProcessing ${pdfs.length} PDF(s) from ${folderName}...`)
+          
+          for (const pdf of pdfs) {
+            const extracted = await processNEWAMLSPDF(pdf)
+            if (extracted && extracted.rows) {
+              // Add rows to the collection
+              extracted.rows.forEach(row => {
+                allExtractedRows.push({
+                  ...row,
+                  sourceFile: extracted.fileName,
+                  sourceFolder: folderName
+                })
+              })
+              
+              // Log to console
+              console.log(`\nExtracted data from ${extracted.fileName}:`)
+              extracted.rows.forEach((row, index) => {
+                console.log(`Row ${index + 1}:`, row)
+              })
+            } else {
+              console.warn(`Failed to extract data from ${pdf.name}`)
+            }
+          }
+        } else if (classification === 'NWMLS') {
+          console.log(`\nProcessing ${pdfs.length} PDF(s) from ${folderName}...`)
+          
+          for (const pdf of pdfs) {
+            const extracted = await processNWMLSPDF(pdf)
+            if (extracted && extracted.rows) {
+              // Add rows to the collection
+              extracted.rows.forEach(row => {
+                allExtractedRows.push({
+                  ...row,
+                  sourceFile: extracted.fileName,
+                  sourceFolder: folderName
+                })
+              })
+              
+              // Log to console
+              console.log(`\nExtracted data from ${extracted.fileName}:`)
+              extracted.rows.forEach((row, index) => {
+                console.log(`Row ${index + 1}:`, row)
+              })
+            } else {
+              console.warn(`Failed to extract data from ${pdf.name}`)
+            }
+          }
+        }
       }
     }
-
-    const limit = pLimit(concurrency)
-    const allExtractedRows = []
-    const results = await Promise.all(
-      tasks.map(({ folderName, file, processor }) =>
-        limit(async () => {
-          const extracted = await processor(file)
-          if (!extracted?.rows) return []
-          return extracted.rows.map(row => ({
-            ...row,
-            sourceFile: extracted.fileName,
-            sourceFolder: folderName
-          }))
-        })
-      )
-    )
-    results.flat().forEach(row => allExtractedRows.push(row))
 
     setClassifications(newClassifications)
     setSelectedFolders(Array.from(folderMap.keys()))
     setExtractedData(allExtractedRows)
     setProcessing(false)
+
+    // Log all rows in Google Sheets format
+    if (allExtractedRows.length > 0) {
+      console.log('\n=== Google Sheets Output (CSV format) ===')
+      const headers = ['Year', 'Month', 'Quarter', 'House Type', 'County', 'MLS', 'Total Listings', 'Total Sales']
+      console.log(headers.join(','))
+      allExtractedRows.forEach(row => {
+        const values = [
+          row.Year,
+          row.Month,
+          row.Quarter,
+          row['House Type'],
+          row.County,
+          row.MLS,
+          row['Total Listings'],
+          row['Total Sales']
+        ]
+        console.log(values.join(','))
+      })
+    }
   }
 
   return (
@@ -109,26 +158,6 @@ function App() {
         <p className="subtitle">
           Select folders containing PDFs to classify them as one of five MLS types
         </p>
-
-        <div className="concurrency-section">
-          <label className="concurrency-label">
-            <span>Concurrent processors: {concurrency}</span>
-            <input
-              type="range"
-              min={1}
-              max={MAX_CONCURRENCY}
-              value={concurrency}
-              onChange={(e) => setConcurrency(Number(e.target.value))}
-              disabled={processing}
-              className="concurrency-slider"
-            />
-          </label>
-          <p className="concurrency-note">
-            This is the number of files processed at the same time. Using a higher value can speed up extraction,
-            but may slow down other applications and the browser while processing, and can lead to a sluggish or
-            unresponsive page.
-          </p>
-        </div>
         
         <div className="upload-section">
           <label htmlFor="folder-input" className="upload-label">
@@ -165,6 +194,9 @@ function App() {
                 </div>
               ))}
             </div>
+            <p className="console-note">
+              💡 Check the browser console to see the classification output
+            </p>
           </div>
         )}
 
@@ -198,8 +230,8 @@ function App() {
                       <td>{row['House Type']}</td>
                       <td>{row.County}</td>
                       <td>{row.MLS}</td>
-                      <td>{row['Total Listings'] ?? 0}</td>
-                      <td>{row['Total Sales'] ?? 0}</td>
+                      <td>{row['Total Listings'] ?? 'N/A'}</td>
+                      <td>{row['Total Sales'] ?? 'N/A'}</td>
                       <td className="source-file">{row.sourceFile}</td>
                     </tr>
                   ))}
@@ -209,7 +241,6 @@ function App() {
             <button 
               className="copy-button"
               onClick={() => {
-                // Build CSV string and copy to clipboard for pasting into Sheets/Excel
                 const headers = ['Year', 'Month', 'Quarter', 'House Type', 'County', 'MLS', 'Total Listings', 'Total Sales']
                 const csv = [
                   headers.join(','),
@@ -220,14 +251,16 @@ function App() {
                     `"${row['House Type']}"`,
                     `"${row.County}"`,
                     row.MLS,
-                    row['Total Listings'] ?? 0,
-                    row['Total Sales'] ?? 0
+                    row['Total Listings'] ?? '',
+                    row['Total Sales'] ?? ''
                   ].join(','))
                 ].join('\n')
                 
                 navigator.clipboard.writeText(csv).then(() => {
                   alert('CSV data copied to clipboard!')
-                }).catch(() => {})
+                }).catch(err => {
+                  console.error('Failed to copy:', err)
+                })
               }}
             >
               📋 Copy CSV to Clipboard
@@ -236,28 +269,13 @@ function App() {
         )}
 
         <div className="info-section">
-          <h3>How to name your folders</h3>
-          <p>
-            Each top-level folder name must <strong>start with</strong> one of the five MLS types below
-            (e.g. <code>NEWAMLS</code>, <code>NWMLS_2024</code>, <code>Olympic MLS Q1</code>). The folder should
-            only contain files of that type (no mixed formats or extra files).
-          </p>
+          <h3>Supported MLS Types:</h3>
           <ul>
-            <li><strong>NEWAMLS</strong> – PDF files only</li>
-            <li><strong>NWMLS</strong> – PDF files only</li>
-            <li><strong>Olympic MLS</strong> – XLSX files only (Excel format)</li>
-            <li><strong>RMLS</strong> – PDF files only</li>
-            <li><strong>YARMLS</strong> – PDF files only</li>
+            {MLS_TYPES.map((type, index) => (
+              <li key={index}>{type}</li>
+            ))}
           </ul>
-          <p>
-            Matching is case-insensitive. Folders whose names don&apos;t start with one of these types
-            will be shown as UNKNOWN and their files will not be processed.
-          </p>
         </div>
-
-        <footer className="icon-credit">
-          <a target="_blank" rel="noopener noreferrer" href="https://icons8.com/icon/86315/house">House</a> icon by <a target="_blank" rel="noopener noreferrer" href="https://icons8.com">Icons8</a>
-        </footer>
       </div>
     </div>
   )

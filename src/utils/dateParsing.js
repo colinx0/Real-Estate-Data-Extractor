@@ -32,13 +32,15 @@ export const parseDateFromText = (text) => {
     /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})/i,
     // Without comma: "October 21 2025"
     /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\s+(\d{4})/i,
-    // With day name: "Tuesday, October 21, 2025"
+    // With day name: "Tuesday, October 21, 2025" (month is in match[2] because of the optional day prefix)
     /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})/i
   ]
 
+  // Try each pattern until one matches; capture groups vary by pattern
   for (const pattern of patterns) {
     const match = text.match(pattern)
     if (match) {
+      // Different patterns put month/day/year in different indices
       const monthName = match[1] ? match[1].toLowerCase() : (match[2] ? match[2].toLowerCase() : null)
       const day = parseInt(match[2] || match[3] || 1, 10)
       const year = parseInt(match[3] || match[4] || match[2], 10)
@@ -54,9 +56,8 @@ export const parseDateFromText = (text) => {
 }
 
 /**
- * Parse date from NWMLS format text
- * Example: "Listings as of 10/1/2025 at 7:40:24AM"
- * Returns: { month: 10, year: 2025 }
+ * Parse date from NWMLS format text (e.g. "Listings as of 10/1/2025 at 7:40:24AM").
+ * Returns { month, year, day }.
  */
 export const parseNWMLSDate = (text) => {
   if (!text) return null

@@ -11,7 +11,8 @@ import {
 } from '../pdfCore.js'
 
 /**
- * Process NEWAMLS PDF and extract data
+ * Process NEWAMLS PDF. Extracts date from footer and listings/sales from fixed coordinates on page 1.
+ * Outputs three rows: Residential, Condos, Total.
  */
 export const processNEWAMLSPDF = async (file) => {
   try {
@@ -36,36 +37,24 @@ export const processNEWAMLSPDF = async (file) => {
     const page = await pdf.getPage(1)
 
     let dateText = await extractTextAtCoordinates(page, 3.09, 72, 80, 5)
-    console.log(`[${file.name}] Extracted date text:`, dateText)
-
     let dateInfo = parseDateFromText(dateText)
 
+    // If the usual coordinates miss the date, try larger areas and finally the whole page
     if (!dateInfo) {
-      console.error(`Could not parse date from PDF: ${file.name}`)
-      console.error(`Extracted text was: "${dateText}"`)
-
-      console.log('Attempting to extract date from larger area (bottom 30% of page)...')
       const largerDateText = await extractTextAtCoordinates(page, 0, 70, 100, 30)
-      console.log(`Text from larger area:`, largerDateText)
       const largerDateInfo = parseDateFromText(largerDateText)
 
       if (largerDateInfo) {
-        console.log('Successfully parsed date from larger area')
         dateInfo = largerDateInfo
         dateText = largerDateText
       } else {
-        console.log('Attempting to extract all text from page to find date...')
         const allTextContent = await page.getTextContent()
         const allText = allTextContent.items.map(item => item.str).join(' ')
-        console.log('Sample of all page text (first 500 chars):', allText.substring(0, 500))
         const allTextDateInfo = parseDateFromText(allText)
 
         if (allTextDateInfo) {
-          console.log('Successfully parsed date from all page text')
           dateInfo = allTextDateInfo
         } else {
-          console.error('Could not find date in PDF. Please check the PDF format.')
-          console.error('The date should be in format: "Month Day, Year" (e.g., "October 21, 2025")')
           return null
         }
       }
@@ -74,6 +63,7 @@ export const processNEWAMLSPDF = async (file) => {
     const { month, year } = dateInfo
     const quarter = getQuarter(month)
 
+    // All coordinates are percentages of page size (left, top, width, height)
     const residentialListingsText = await extractTextAtCoordinates(page, 86.47, 44.83, 2, 1.5)
     const residentialListings = extractNumber(residentialListingsText)
 
@@ -133,8 +123,7 @@ export const processNEWAMLSPDF = async (file) => {
         condoSalesText
       }
     }
-  } catch (error) {
-    console.error('Error processing PDF:', file.name, error)
+  } catch {
     return null
   }
 }

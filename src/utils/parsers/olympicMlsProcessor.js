@@ -18,6 +18,7 @@ const MONTHS = {
   july: 7, august: 8, september: 9, october: 10, november: 11, december: 12
 }
 
+/** Scan column A for a cell containing "totals" (case-insensitive); return that row index. */
 const findTotalsRow = (ws) => {
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
   for (let r = 0; r <= range.e.r; r++) {
@@ -29,6 +30,7 @@ const findTotalsRow = (ws) => {
   return null
 }
 
+/** Read a cell as a number (handles both numeric cells and numeric strings with commas). */
 const getCellValue = (ws, row, col) => {
   const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })]
   if (!cell) return null
@@ -45,6 +47,9 @@ const getCellString = (ws, row, col) => {
   return cell ? String(cell.v || '').trim() : ''
 }
 
+/**
+ * Process Olympic MLS XLSX. Reads county, date, and totals from fixed cells (WCRER format).
+ */
 export const processOlympicMLSXLSX = async (file) => {
   try {
     const arrayBuffer = await file.arrayBuffer()
@@ -58,24 +63,15 @@ export const processOlympicMLSXLSX = async (file) => {
     const month = MONTHS[monthStr]
     const year = yearVal ? Math.round(yearVal) : null
 
-    if (!month || !year) {
-      console.error(`[${file.name}] Could not parse date: month="${monthStr}", year=${yearVal}`)
-      return null
-    }
-
-    if (!county) {
-      console.error(`[${file.name}] Could not find county`)
-      return null
-    }
+    if (!month || !year) return null
+    if (!county) return null
 
     const quarter = getQuarter(month)
     const mls = 'Olympic MLS'
 
+    // WCRER format has a row with "Totals" in column A; numeric columns follow
     const totalsRow = findTotalsRow(ws)
-    if (totalsRow === null) {
-      console.error(`[${file.name}] Could not find Totals row`)
-      return null
-    }
+    if (totalsRow === null) return null
 
     const resSales = getCellValue(ws, totalsRow, 4)
     const condoSales = getCellValue(ws, totalsRow, 8)
@@ -102,8 +98,7 @@ export const processOlympicMLSXLSX = async (file) => {
     ]
 
     return { fileName: file.name, rows }
-  } catch (error) {
-    console.error('Error processing Olympic MLS XLSX:', file.name, error)
+  } catch {
     return null
   }
 }

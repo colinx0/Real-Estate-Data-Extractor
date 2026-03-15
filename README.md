@@ -1,71 +1,48 @@
-# RE Extractor - PDF Folder Classifier
+# RE Extractor
 
-A React application that classifies folders containing PDFs into one of five MLS types and extracts data from them: NEWAMLS, NWMLS, Olympic MLS, RMLS, or YARMLs.
+Extract real estate data from MLS PDFs into a unified spreadsheet-friendly format. Select folders of PDFs, and the app classifies them by MLS type and pulls out dates, counties, house types, listings, and sales.
 
-## Features
+## Quick Start
 
-- Select folders containing PDF files
-- Automatic classification based on folder name
-- PDF data extraction for NEWAMLS and NWMLS types
-- Console output of classification and extraction results
-- Visual display of classification and extracted data
-- CSV export functionality for Google Sheets
-
-## Installation
-
-1. Install dependencies:
 ```bash
 npm install
-```
-
-## Usage
-
-1. Start the development server:
-```bash
 npm run dev
 ```
 
-2. Open your browser and navigate to the URL shown in the terminal (typically `http://localhost:5173`)
+Open the URL in your browser (usually `http://localhost:5173`), click "Select Folders with PDFs", and choose your folders.
 
-3. Click "Select Folders with PDFs" and choose folders containing PDF files
+## Important: Folder Names
 
-4. The application will:
-   - Classify each folder based on its name
-   - Extract data from PDFs (currently supports NEWAMLS and NWMLS)
-   - Display results in the UI
-   - Print classification and extraction results to the browser console
-   - Allow copying extracted data as CSV
+**Folder names must start with one of the MLS types below.** The app looks at the beginning of the folder name to decide how to parse the files inside. For example, `NEWAMLS`, `NWMLS_2024`, and `Olympic MLS Q1` all work. Supported types (match is case-insensitive):
 
-## Supported MLS Types
+| Type          | File format |
+|---------------|-------------|
+| `NEWAMLS`     | PDF         |
+| `NWMLS`       | PDF         |
+| `Olympic MLS` | XLSX        |
+| `RMLS`        | PDF         |
+| `YARMLS`      | PDF         |
 
-- **NEWAMLS**: Extracts date, residential/condo listings and sales
-- **NWMLS**: Extracts date, county, and residential/condo/total listings and sales using table intersection
-- Olympic MLS (coming soon)
-- RMLS (coming soon)
-- YARMLs (coming soon)
+If a folder name doesn't start with one of these, it will be marked as UNKNOWN and skipped for extraction.
 
-## Data Extraction
+## Parallel Processing
 
-### NEWAMLS
-- Extracts date from footer text
-- Extracts residential and condo listings/sales from specific coordinates
-- Outputs 3 rows per PDF: Residential, Condos, Total
+The app processes multiple files at once. Use the **Concurrent processors** slider (1–6) on the page to set how many files are processed in parallel. A higher value can speed up extraction; too high may slow down your machine or make the page sluggish. The default is 3.
 
-### NWMLS
-- Extracts date from page 1
-- Extracts county from page 3
-- Uses table intersection to find data at "count" row and "active"/"total" columns
-- Outputs 3 rows per PDF: Residential, Condos, Total
+## Output
 
-## Development
+All MLS types produce the same columns:
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
+Year | Month | Quarter | House Type | County | MLS | Total Listings | Total Sales
 
-## Technologies
+You can view the results in the table and copy them as CSV for Google Sheets or Excel.
 
-- React 18
-- Vite
-- PDF.js (pdfjs-dist)
+## Deployment
 
+Run `npm run build`, then deploy the `dist/` folder to any static host (Netlify, Vercel, GitHub Pages, etc.). End users don't need to install anything—they just open the site in a browser.
+
+The repo includes `netlify.toml` and `vercel.json` for quick deployment on those platforms.
+
+## Tech
+
+React, Vite, PDF.js, xlsx (SheetJS), p-limit (concurrency). Favicon: House icon by Icons8.

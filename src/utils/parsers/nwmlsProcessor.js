@@ -11,6 +11,7 @@ import {
   extractNumber
 } from '../pdfCore.js'
 
+/** Extract county from text like "County is 'King'" */
 export const parseNWMLSCounty = (text) => {
   if (!text) return null
   const countyPattern = /County is\s+['"]([^'"]+)['"]/i
@@ -24,6 +25,7 @@ const getFullPageText = async (page) => {
   return tc.items.map(item => item.str).join(' ')
 }
 
+/** Scan PDF pages and return the first one that contains the given text (e.g. "Residential Totals"). */
 const findPageByContent = async (pdf, marker) => {
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p)
@@ -50,12 +52,17 @@ const extractCountyFromText = (text) => {
   return parseNWMLSCounty(text)
 }
 
+/** Get listings and sales from the count row, using "active" and "total" column intersections. */
 const extractTableData = async (page) => {
   const listings = extractNumber(await findTableIntersection(page, 'count', 'active', 0, 0, 100, 100))
   const sales = extractNumber(await findTableIntersection(page, 'count', 'total', 0, 0, 100, 100))
   return { listings, sales }
 }
 
+/**
+ * Process NWMLS PDF. Finds Residential/Condo/Summary pages by content, extracts table data
+ * at "count" × "active"/"total" intersections. County is parsed from a later page.
+ */
 export const processNWMLSPDF = async (file) => {
   try {
     ensureWorkerConfigured()
@@ -71,10 +78,7 @@ export const processNWMLSPDF = async (file) => {
 
     const page1 = await pdf.getPage(1)
     const dateInfo = await extractDateFromPage(page1)
-    if (!dateInfo) {
-      console.error(`[${file.name}] Could not find date`)
-      return null
-    }
+    if (!dateInfo) return null
 
     const { month, year } = dateInfo
     const quarter = getQuarter(month)
@@ -84,6 +88,7 @@ export const processNWMLSPDF = async (file) => {
     const condoPage = await findPageByContent(pdf, 'Condominium Totals')
     const summaryPage = await findPageByContent(pdf, 'Summary of All Properties')
 
+    // County is usually near the end of the PDF; search from last page backward
     let county = null
     for (let p = pdf.numPages; p >= 1 && !county; p--) {
       const page = await pdf.getPage(p)
@@ -91,10 +96,7 @@ export const processNWMLSPDF = async (file) => {
       county = extractCountyFromText(text)
     }
 
-    if (!county) {
-      console.error(`[${file.name}] Could not find county`)
-      return null
-    }
+    if (!county) return null
 
     const residential = residentialPage ? await extractTableData(residentialPage) : { listings: null, sales: null }
     const condo = condoPage ? await extractTableData(condoPage) : { listings: null, sales: null }
@@ -119,8 +121,7 @@ export const processNWMLSPDF = async (file) => {
     ]
 
     return { fileName: file.name, rows }
-  } catch (error) {
-    console.error('Error processing NWMLS PDF:', file.name, error)
+  } catch {
     return null
   }
 }

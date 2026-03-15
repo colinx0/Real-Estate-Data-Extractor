@@ -1,11 +1,12 @@
 /**
- * Core PDF utilities: worker configuration and shared extraction helpers
+ * Core PDF utilities: PDF.js worker setup and shared extraction helpers for table/cell data.
  */
 
 import * as pdfjsLib from "pdfjs-dist";
 
 const workerUrl = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
+/** Set up PDF.js worker so parsing runs off the main thread. */
 export function configureWorker() {
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 }
@@ -19,7 +20,8 @@ export const ensureWorkerConfigured = () => {
 export const getPdfLib = () => pdfjsLib
 
 /**
- * Find intersection of row and column headers in a PDF table
+ * Find the cell value at the intersection of a row header and column header in a PDF table.
+ * Used by NWMLS to find "count" row × "active"/"total" column.
  */
 export const findTableIntersection = async (page, rowHeader, colHeader, searchLeftPercent = 0, searchTopPercent = 0, searchWidthPercent = 100, searchHeightPercent = 100) => {
   try {
@@ -42,6 +44,7 @@ export const findTableIntersection = async (page, rowHeader, colHeader, searchLe
     const colTolerance = 30
     const itemsByY = new Map()
 
+    // First pass: group text items by Y position (rounded to tolerance) and note column header X positions
     for (const item of textContent.items) {
       const transform = item.transform
       const x = transform[4]
@@ -67,6 +70,7 @@ export const findTableIntersection = async (page, rowHeader, colHeader, searchLe
       }
     }
 
+    // Second pass: find which Y bucket contains the row header (e.g. "count")
     for (const [yKey, items] of itemsByY.entries()) {
       const combinedText = items.map(i => i.text).join(' ').toLowerCase()
 
@@ -85,21 +89,16 @@ export const findTableIntersection = async (page, rowHeader, colHeader, searchLe
       if (rowHeaderY) break
     }
 
-    if (!rowHeaderY) {
-      const foundTexts = Array.from(itemsByY.values()).flat().map(i => i.text).filter(t => t.length > 0)
-      console.warn(`Row header "${rowHeader}" not found in search area. Found texts:`, foundTexts.slice(0, 20))
-      return null
-    }
+    if (!rowHeaderY) return null
 
+    // Pick the column X based on whether we want "active" or "total"
     const targetColX = colHeaderLower === 'active' ? activeColX : totalColX
 
-    if (!targetColX) {
-      console.warn(`Column header "${colHeader}" not found in search area`)
-      return null
-    }
+    if (!targetColX) return null
 
     const intersectionItems = []
 
+    // Third pass: collect items that sit at (rowHeaderY, targetColX) within tolerance
     for (const item of textContent.items) {
       const transform = item.transform
       const x = transform[4]
@@ -119,6 +118,7 @@ export const findTableIntersection = async (page, rowHeader, colHeader, searchLe
     }
 
     if (intersectionItems.length > 0) {
+      // Sort by Y then X so we read left-to-right, top-to-bottom
       intersectionItems.sort((a, b) => {
         if (Math.abs(a.yFromTop - b.yFromTop) > rowTolerance) {
           return a.yFromTop - b.yFromTop
@@ -126,6 +126,7 @@ export const findTableIntersection = async (page, rowHeader, colHeader, searchLe
         return a.x - b.x
       })
 
+      // Concatenate all text in the cell (some cells have multiple fragments)
       let result = ''
       for (const entry of intersectionItems) {
         result += entry.item.str
@@ -135,14 +136,14 @@ export const findTableIntersection = async (page, rowHeader, colHeader, searchLe
     }
 
     return null
-  } catch (error) {
-    console.error('Error finding table intersection:', error)
+  } catch {
     return null
   }
 }
 
 /**
- * Extract text from PDF at specific percentage coordinates
+ * Extract text from a rectangular region of a PDF page. Coordinates are percentages of page size.
+ * Used by NEWAMLS for fixed-position extractions (date, listings, sales).
  */
 export const extractTextAtCoordinates = async (page, leftPercent, topPercent, widthPercent = 50, heightPercent = 10) => {
   try {
@@ -157,6 +158,7 @@ export const extractTextAtCoordinates = async (page, leftPercent, topPercent, wi
 
     const textContent = await page.getTextContent()
     const tolerance = 2
+    // Keep only items whose position falls inside the box
     const itemsInArea = textContent.items.filter(item => {
       const transform = item.transform
       const x = transform[4]
@@ -169,6 +171,7 @@ export const extractTextAtCoordinates = async (page, leftPercent, topPercent, wi
              yFromTop <= (top + height + tolerance)
     })
 
+    // Sort top-to-bottom, then left-to-right
     itemsInArea.sort((a, b) => {
       const yA = pageHeight - a.transform[5]
       const yB = pageHeight - b.transform[5]
@@ -179,6 +182,7 @@ export const extractTextAtCoordinates = async (page, leftPercent, topPercent, wi
     })
 
     if (itemsInArea.length > 0) {
+      // Prefer items on the top line and near the center (avoids headers/labels)
       const targetX = left + (width / 2)
       const sameLineItems = []
       const firstY = pageHeight - itemsInArea[0].transform[5]
@@ -200,14 +204,13 @@ export const extractTextAtCoordinates = async (page, leftPercent, topPercent, wi
     }
 
     return itemsInArea.map(item => item.str).join(' ')
-  } catch (error) {
-    console.error('Error extracting text at coordinates:', error)
+  } catch {
     return null
   }
 }
 
 /**
- * Extract number from text (removes commas and non-numeric characters)
+ * Parse a number from text (e.g. "1,234" or "1,234 units"). Strips commas and non-digits.
  */
 export const extractNumber = (text) => {
   if (!text) return null

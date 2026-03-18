@@ -3,6 +3,7 @@
  */
 
 import { parseNWMLSDate, getQuarter } from '../dateParsing.js'
+import { parseCountyIsQuoted } from '../countyParsing.js'
 import {
   ensureWorkerConfigured,
   getPdfLib,
@@ -10,15 +11,6 @@ import {
   findTableIntersection,
   extractNumber
 } from '../pdfCore.js'
-
-/** Extract county from text like "County is 'King'" */
-export const parseNWMLSCounty = (text) => {
-  if (!text) return null
-  const countyPattern = /County is\s+['"]([^'"]+)['"]/i
-  const match = text.match(countyPattern)
-  if (!match) return null
-  return match[1].trim()
-}
 
 const getFullPageText = async (page) => {
   const tc = await page.getTextContent()
@@ -49,7 +41,7 @@ const extractDateFromPage = async (page) => {
 }
 
 const extractCountyFromText = (text) => {
-  return parseNWMLSCounty(text)
+  return parseCountyIsQuoted(text)
 }
 
 /** Get listings and sales from the count row, using "active" and "total" column intersections. */

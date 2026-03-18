@@ -1,6 +1,6 @@
 /**
  * Main app: folder selection, MLS classification, and PDF/XLSX data extraction.
- * Users pick folders; each folder's name must start with one of the five MLS types.
+ * Users pick folders; the app looks for nested folders that exactly match one of the five MLS types.
  */
 
 import React, { useState } from 'react'
@@ -11,6 +11,7 @@ import { processNEWAMLSPDF, processNWMLSPDF, processYARMLSPDF, processRMLSPDF, p
 const MLS_TYPES = ['NEWAMLS', 'NWMLS', 'Olympic MLS', 'RMLS', 'YARMLS']
 const MAX_CONCURRENCY = 6
 const DEFAULT_CONCURRENCY = 3
+const FOLDER_SEARCH_TIME_LIMIT = 3000
 
 const processorMap = {
   'NEWAMLS': processNEWAMLSPDF,
@@ -26,14 +27,25 @@ function App() {
   const [extractedData, setExtractedData] = useState([])
   const [processing, setProcessing] = useState(false)
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY)
+  const [folderSearchWarning, setFolderSearchWarning] = useState('')
 
-  /** Match folder name to an MLS type if it starts with that type (case-insensitive). Returns null if no match. */
+  // Match folder name to an MLS type (case-insensitive exact match). Returns null if no match.
   const classifyFolder = (folderName) => {
     const normalizedName = folderName.trim()
     const matchedType = MLS_TYPES.find(type =>
-      normalizedName.toLowerCase().startsWith(type.toLowerCase())
+      normalizedName.toLowerCase() === type.toLowerCase()
     )
     return matchedType || null
+  }
+
+  // For "Parent/2026/NWMLS/Jan/report.pdf" returns "NWMLS" (deepest matching folder).
+  const findNearestMlsFolderInPath = (webkitRelativePath) => {
+    const parts = webkitRelativePath.split('/').filter(Boolean)
+    for (let i = parts.length - 2; i >= 0; i--) {
+      const match = classifyFolder(parts[i])
+      if (match) return match
+    }
+    return null
   }
 
   const handleFolderSelection = async (event) => {
@@ -42,24 +54,33 @@ function App() {
 
     setProcessing(true)
     setExtractedData([])
+    setFolderSearchWarning('')
 
     // Build a map: folder name -> list of files in that folder
     const folderMap = new Map()
-    files.forEach(file => {
-      // webkitRelativePath is like "FolderName/file.pdf"
-      const pathParts = file.webkitRelativePath.split('/')
-      if (pathParts.length > 1) {
-        const folderName = pathParts[0]
-        if (!folderMap.has(folderName)) {
-          folderMap.set(folderName, [])
-        }
-        folderMap.get(folderName).push(file)
-      }
-    })
+    const start = performance.now()
+    for (const file of files) {
+      if (performance.now() - start > FOLDER_SEARCH_TIME_LIMIT) break
+      if (!file.webkitRelativePath) continue
+
+      const mlsFolder = findNearestMlsFolderInPath(file.webkitRelativePath)
+      if (!mlsFolder) continue
+
+      if (!folderMap.has(mlsFolder)) folderMap.set(mlsFolder, [])
+      folderMap.get(mlsFolder).push(file)
+    }
+
+    if (performance.now() - start > FOLDER_SEARCH_TIME_LIMIT) {
+      setFolderSearchWarning(
+        `Stopped searching for nested MLS folders after ${Math.round(FOLDER_SEARCH_TIME_LIMIT / 1000)}s. ` +
+        'If some files were skipped, try selecting a smaller folder or reduce nesting depth.'
+      )
+    }
 
     const newClassifications = []
     const tasks = []
 
+    //classify files and create tasks
     for (const [folderName, pdfFiles] of folderMap.entries()) {
       const pdfs = pdfFiles.filter(file =>
         file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') ||
@@ -79,6 +100,7 @@ function App() {
       }
     }
 
+    //process all files
     const limit = pLimit(concurrency)
     const allExtractedRows = []
     const results = await Promise.all(
@@ -128,6 +150,9 @@ function App() {
             but may slow down other applications and the browser while processing, and can lead to a sluggish or
             unresponsive page.
           </p>
+          {folderSearchWarning && (
+            <p className="folder-search-warning">{folderSearchWarning}</p>
+          )}
         </div>
         
         <div className="upload-section">
@@ -238,9 +263,8 @@ function App() {
         <div className="info-section">
           <h3>How to name your folders</h3>
           <p>
-            Each top-level folder name must <strong>start with</strong> one of the five MLS types below
-            (e.g. <code>NEWAMLS</code>, <code>NWMLS_2024</code>, <code>Olympic MLS Q1</code>). The folder should
-            only contain files of that type (no mixed formats or extra files).
+            The app looks for folders named <strong>exactly</strong> as one of the five MLS types below (case-insensitive).
+            You can upload a parent folder; nested folders are scanned for these exact names (up to a 3 second scan limit).
           </p>
           <ul>
             <li><strong>NEWAMLS</strong> – PDF files only</li>
@@ -250,8 +274,7 @@ function App() {
             <li><strong>YARMLS</strong> – PDF files only</li>
           </ul>
           <p>
-            Matching is case-insensitive. Folders whose names don&apos;t start with one of these types
-            will be shown as UNKNOWN and their files will not be processed.
+            Only files inside one of these folders will be processed.
           </p>
         </div>
 

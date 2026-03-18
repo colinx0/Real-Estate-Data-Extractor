@@ -13,7 +13,7 @@ Open the URL in your browser (usually `http://localhost:5173`), click "Select Fo
 
 ## Important: Folder Names
 
-**Folder names must start with one of the MLS types below.** The app looks at the beginning of the folder name to decide how to parse the files inside. For example, `NEWAMLS`, `NWMLS_2024`, and `Olympic MLS Q1` all work. Supported types (match is case-insensitive):
+**Folders must be named exactly as one of the MLS types below** (match is case-insensitive). You can upload a parent folder that contains nested MLS folders—this app will scan for nested folders with these exact names (up to a 3 second scan limit).
 
 | Type          | File format |
 |---------------|-------------|
@@ -23,7 +23,7 @@ Open the URL in your browser (usually `http://localhost:5173`), click "Select Fo
 | `RMLS`        | PDF         |
 | `YARMLS`      | PDF         |
 
-If a folder name doesn't start with one of these, it will be marked as UNKNOWN and skipped for extraction.
+Only files inside one of these folders will be processed.
 
 ## Parallel Processing
 

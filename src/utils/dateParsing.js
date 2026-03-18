@@ -27,6 +27,14 @@ export const getQuarter = (month) => {
 export const parseDateFromText = (text) => {
   if (!text) return null
 
+  const rangeMatch = text.match(/For\s+(\d{1,2})\/\d{1,2}\/(\d{4})\s+To/i)
+  if (rangeMatch) {
+    const month = parseInt(rangeMatch[1], 10)
+    const year = parseInt(rangeMatch[2], 10)
+    if (month < 1 || month > 12) return null
+    return { month, year }
+  }
+
   const patterns = [
     // Standard format: "October 21, 2025"
     /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})/i,
@@ -66,11 +74,18 @@ export const parseNWMLSDate = (text) => {
   const match = text.match(datePattern)
   if (!match) return null
 
-  const month = parseInt(match[1], 10)
+  let month = parseInt(match[1], 10)
   const day = parseInt(match[2], 10)
-  const year = parseInt(match[3], 10)
+  let year = parseInt(match[3], 10)
 
   if (month < 1 || month > 12) return null
+
+  if (month === 1) {
+    month = 12
+    year -= 1
+  } else {
+    month -= 1
+  }
 
   return { month, year, day }
 }

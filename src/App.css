@@ -75,6 +75,18 @@ h1 {
   line-height: 1.4;
 }
 
+.folder-search-warning {
+  margin-top: 10px;
+  margin-bottom: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fff4e5;
+  border: 1px solid #ffd6a1;
+  color: #7a4a00;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .upload-section {
   margin-bottom: 32px;
 }

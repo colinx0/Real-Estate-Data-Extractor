@@ -2,18 +2,12 @@
  * NEWAMLS PDF processor
  */
 
-import { parseDateFromText, getQuarter } from '../dateParsing.js'
-import {
-  ensureWorkerConfigured,
-  getPdfLib,
-  extractTextAtCoordinates,
-  extractNumber
-} from '../pdfCore.js'
+import { parseDateFromText, getQuarter } from '../utilities/dateParsing.js'
+import { ensureWorkerConfigured, getPdfLib } from '../utilities/pdfJsSetup.js'
+import { extractTextAtCoordinates } from '../utilities/pdfRegionText.js'
+import { extractNumberFromText } from '../utilities/extractNumberFromText.js'
+import { getFullPageText } from '../utilities/fullPageText.js'
 
-/**
- * Process NEWAMLS PDF. Extracts date from footer and listings/sales from fixed coordinates on page 1.
- * Outputs three rows: Residential, Condos, Total.
- */
 export const processNEWAMLSPDF = async (file) => {
   try {
     ensureWorkerConfigured()
@@ -39,7 +33,6 @@ export const processNEWAMLSPDF = async (file) => {
     let dateText = await extractTextAtCoordinates(page, 3.09, 72, 80, 5)
     let dateInfo = parseDateFromText(dateText)
 
-    // If the usual coordinates miss the date, try larger areas and finally the whole page
     if (!dateInfo) {
       const largerDateText = await extractTextAtCoordinates(page, 0, 70, 100, 30)
       const largerDateInfo = parseDateFromText(largerDateText)
@@ -48,8 +41,7 @@ export const processNEWAMLSPDF = async (file) => {
         dateInfo = largerDateInfo
         dateText = largerDateText
       } else {
-        const allTextContent = await page.getTextContent()
-        const allText = allTextContent.items.map(item => item.str).join(' ')
+        const allText = await getFullPageText(page)
         const allTextDateInfo = parseDateFromText(allText)
 
         if (allTextDateInfo) {
@@ -63,18 +55,17 @@ export const processNEWAMLSPDF = async (file) => {
     const { month, year } = dateInfo
     const quarter = getQuarter(month)
 
-    // All coordinates are percentages of page size (left, top, width, height)
     const residentialListingsText = await extractTextAtCoordinates(page, 86.47, 44.83, 2, 1.5)
-    const residentialListings = extractNumber(residentialListingsText)
+    const residentialListings = extractNumberFromText(residentialListingsText)
 
     const residentialSalesText = await extractTextAtCoordinates(page, 70.17, 60.92, 1.5, 1.5)
-    const residentialSales = extractNumber(residentialSalesText)
+    const residentialSales = extractNumberFromText(residentialSalesText)
 
     const condoListingsText = await extractTextAtCoordinates(page, 90.45, 44.83, 1.5, 1.5)
-    const condoListings = extractNumber(condoListingsText)
+    const condoListings = extractNumberFromText(condoListingsText)
 
     const condoSalesText = await extractTextAtCoordinates(page, 73.24, 60.92, 2, 1.5)
-    const condoSales = extractNumber(condoSalesText)
+    const condoSales = extractNumberFromText(condoSalesText)
 
     const county = 'Stevens, Ferry, Pend Oreille'
     const mls = 'NEWAMLS'

@@ -12,4 +12,3 @@ export const parseCountyIsQuoted = (text) => {
   if (!match) return null
   return match[1].trim()
 }
-

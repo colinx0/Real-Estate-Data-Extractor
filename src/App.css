@@ -244,6 +244,50 @@ h1 {
   background: #333;
 }
 
+.csv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.pdf-group-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.pdf-group-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.pdf-group-title {
+  font-weight: 600;
+  color: #111;
+  margin-bottom: 4px;
+}
+
+.pdf-group-meta {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.pdf-file-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.pdf-file-item {
+  color: #444;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
 .info-section {
   margin-top: 32px;
   padding-top: 24px;

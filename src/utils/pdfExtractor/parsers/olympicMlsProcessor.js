@@ -10,13 +10,8 @@
  *     J43: SF Active Listings, K43: Condo Active Listings
  */
 
-import { getQuarter } from '../dateParsing.js'
+import { getQuarter, MONTHS } from '../utilities/dateParsing.js'
 import * as XLSX from 'xlsx'
-
-const MONTHS = {
-  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
-  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12
-}
 
 /** Scan column A for a cell containing "totals" (case-insensitive); return that row index. */
 const findTotalsRow = (ws) => {
@@ -69,7 +64,6 @@ export const processOlympicMLSXLSX = async (file) => {
     const quarter = getQuarter(month)
     const mls = 'Olympic MLS'
 
-    // WCRER format has a row with "Totals" in column A; numeric columns follow
     const totalsRow = findTotalsRow(ws)
     if (totalsRow === null) return null
 
@@ -80,18 +74,32 @@ export const processOlympicMLSXLSX = async (file) => {
 
     const rows = [
       {
-        Year: year, Month: month, Quarter: quarter,
-        'House Type': 'Residential', County: county, MLS: mls,
-        'Total Listings': resListings, 'Total Sales': resSales
+        Year: year,
+        Month: month,
+        Quarter: quarter,
+        'House Type': 'Residential',
+        County: county,
+        MLS: mls,
+        'Total Listings': resListings,
+        'Total Sales': resSales
       },
       {
-        Year: year, Month: month, Quarter: quarter,
-        'House Type': 'Condos', County: county, MLS: mls,
-        'Total Listings': condoListings, 'Total Sales': condoSales
+        Year: year,
+        Month: month,
+        Quarter: quarter,
+        'House Type': 'Condos',
+        County: county,
+        MLS: mls,
+        'Total Listings': condoListings,
+        'Total Sales': condoSales
       },
       {
-        Year: year, Month: month, Quarter: quarter,
-        'House Type': 'Total', County: county, MLS: mls,
+        Year: year,
+        Month: month,
+        Quarter: quarter,
+        'House Type': 'Total',
+        County: county,
+        MLS: mls,
         'Total Listings': (resListings || 0) + (condoListings || 0),
         'Total Sales': (resSales || 0) + (condoSales || 0)
       }

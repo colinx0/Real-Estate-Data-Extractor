@@ -3,8 +3,18 @@
  */
 
 export const MONTHS = {
-  'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
-  'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12
 }
 
 /**
@@ -36,20 +46,15 @@ export const parseDateFromText = (text) => {
   }
 
   const patterns = [
-    // Standard format: "October 21, 2025"
     /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})/i,
-    // Without comma: "October 21 2025"
     /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\s+(\d{4})/i,
-    // With day name: "Tuesday, October 21, 2025" (month is in match[2] because of the optional day prefix)
     /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})/i
   ]
 
-  // Try each pattern until one matches; capture groups vary by pattern
   for (const pattern of patterns) {
     const match = text.match(pattern)
     if (match) {
-      // Different patterns put month/day/year in different indices
-      const monthName = match[1] ? match[1].toLowerCase() : (match[2] ? match[2].toLowerCase() : null)
+      const monthName = match[1] ? match[1].toLowerCase() : match[2] ? match[2].toLowerCase() : null
       const day = parseInt(match[2] || match[3] || 1, 10)
       const year = parseInt(match[3] || match[4] || match[2], 10)
 

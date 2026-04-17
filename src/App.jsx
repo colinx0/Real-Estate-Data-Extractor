@@ -6,7 +6,11 @@
 import React, { useState } from 'react'
 import pLimit from 'p-limit'
 import './App.css'
-import { processNEWAMLSPDF, processNWMLSPDF, processYARMLSPDF, processRMLSPDF, processOlympicMLSXLSX } from './utils/pdfExtractor'
+import { processNEWAMLSPDF } from './utils/pdfExtractor/parsers/newamlsProcessor'
+import { processNWMLSPDF } from './utils/pdfExtractor/parsers/nwmlsProcessor'
+import { processYARMLSPDF } from './utils/pdfExtractor/parsers/yarmlsProcessor'
+import { processRMLSPDF } from './utils/pdfExtractor/parsers/rmlsProcessor'
+import { processOlympicMLSXLSX } from './utils/pdfExtractor/parsers/olympicMlsProcessor'
 
 const MLS_TYPES = ['NEWAMLS', 'NWMLS', 'Olympic MLS', 'RMLS', 'YARMLS']
 const MAX_CONCURRENCY = 6
@@ -28,6 +32,33 @@ function App() {
   const [processing, setProcessing] = useState(false)
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY)
   const [folderSearchWarning, setFolderSearchWarning] = useState('')
+
+  const csvEscape = (value) => {
+    if (value === null || value === undefined) return ''
+    const s = String(value)
+    const needsQuotes = /[",\n\r]/.test(s)
+    const escaped = s.replace(/"/g, '""')
+    return needsQuotes ? `"${escaped}"` : escaped
+  }
+
+  const buildCsv = (headers, rows) => {
+    return [
+      headers.map(csvEscape).join(','),
+      ...rows.map((r) => headers.map((h) => csvEscape(r[h])).join(','))
+    ].join('\n')
+  }
+
+  const downloadCsvFile = (fileName, csv) => {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
 
   // Match folder name to an MLS type (case-insensitive exact match). Returns null if no match.
   const classifyFolder = (folderName) => {
@@ -231,32 +262,114 @@ function App() {
                 </tbody>
               </table>
             </div>
-            <button 
-              className="copy-button"
-              onClick={() => {
-                // Build CSV string and copy to clipboard for pasting into Sheets/Excel
-                const headers = ['Year', 'Month', 'Quarter', 'House Type', 'County', 'MLS', 'Total Listings', 'Total Sales']
-                const csv = [
-                  headers.join(','),
-                  ...extractedData.map(row => [
-                    row.Year,
-                    row.Month,
-                    row.Quarter,
-                    `"${row['House Type']}"`,
-                    `"${row.County}"`,
-                    row.MLS,
-                    row['Total Listings'] ?? 0,
-                    row['Total Sales'] ?? 0
-                  ].join(','))
-                ].join('\n')
-                
-                navigator.clipboard.writeText(csv).then(() => {
-                  alert('CSV data copied to clipboard!')
-                }).catch(() => {})
-              }}
-            >
-              📋 Copy CSV to Clipboard
-            </button>
+            <div className="csv-actions">
+              <button 
+                className="copy-button"
+                onClick={() => {
+                  // Build CSV string and copy to clipboard for pasting into Sheets/Excel
+                  const headers = ['Year', 'Month', 'Quarter', 'House Type', 'County', 'MLS', 'Total Listings', 'Total Sales']
+                  const csv = [
+                    headers.join(','),
+                    ...extractedData.map(row => [
+                      row.Year,
+                      row.Month,
+                      row.Quarter,
+                      `"${row['House Type']}"`,
+                      `"${row.County}"`,
+                      row.MLS,
+                      row['Total Listings'] ?? 0,
+                      row['Total Sales'] ?? 0
+                    ].join(','))
+                  ].join('\n')
+
+                  navigator.clipboard.writeText(csv).then(() => {
+                    alert('CSV data copied to clipboard!')
+                  }).catch(() => {})
+                }}
+              >
+                📋 Copy CSV to Clipboard
+              </button>
+              <button
+                className="copy-button"
+                onClick={() => {
+                  const headers = [
+                    'Year',
+                    'Month',
+                    'Quarter',
+                    'House Type',
+                    'County',
+                    'MLS',
+                    'Total Listings',
+                    'Total Sales',
+                    'sourceFile',
+                    'sourceFolder'
+                  ]
+                  const csv = buildCsv(headers, extractedData)
+                  const ts = new Date().toISOString().replace(/[:.]/g, '-')
+                  downloadCsvFile(`re-extractor-full-${ts}.csv`, csv)
+                }}
+              >
+                💾 Download full CSV (includes source file/folder)
+              </button>
+            </div>
+
+            {(() => {
+              const groups = new Map()
+              for (const row of extractedData) {
+                const key = `${row.Year}|${row.Month}|${row.MLS}`
+                if (!groups.has(key)) {
+                  groups.set(key, {
+                    Year: row.Year,
+                    Month: row.Month,
+                    Quarter: row.Quarter,
+                    MLS: row.MLS,
+                    sourceFiles: new Set(),
+                    counties: new Set()
+                  })
+                }
+                const g = groups.get(key)
+                if (row.sourceFile) g.sourceFiles.add(row.sourceFile)
+                if (row.County) g.counties.add(row.County)
+              }
+
+              const summary = Array.from(groups.values()).map((g) => ({
+                ...g,
+                sourceFiles: Array.from(g.sourceFiles).sort(),
+                counties: Array.from(g.counties).sort()
+              }))
+
+              summary.sort((a, b) => {
+                if (a.Year !== b.Year) return a.Year - b.Year
+                if (a.Month !== b.Month) return a.Month - b.Month
+                return String(a.MLS).localeCompare(String(b.MLS))
+              })
+
+              return (
+                <div className="extracted-data-section">
+                  <h2>Source PDFs by Year + Month + MLS</h2>
+                  <p className="data-info">
+                    {summary.length} group(s). Each group lists all processed PDFs and counties included.
+                  </p>
+                  <div className="pdf-group-list">
+                    {summary.map((g, idx) => (
+                      <div key={idx} className="pdf-group-card">
+                        <div className="pdf-group-title">
+                          {g.Year} / {g.Month} / {g.MLS}
+                        </div>
+                        <div className="pdf-group-meta">
+                          Counties: {g.counties.length > 0 ? g.counties.join(', ') : 'None'}
+                        </div>
+                        <ul className="pdf-file-list">
+                          {g.sourceFiles.map((fileName) => (
+                            <li key={fileName} className="pdf-file-item">{fileName}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         )}
 
